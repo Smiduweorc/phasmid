@@ -1,7 +1,7 @@
 {
-	"name": "@grml/lib-template",
-	"version": "0.0.0",
-	"description": "ESM-friendly TypeScript library template.",
+	"name": "phasmid",
+	"version": "0.0.1",
+	"description": "TypeScript library for data transformation and normalization.",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/types/index.d.ts",
@@ -27,14 +27,14 @@
 	"keywords": [
 		"typescript",
 		"esm",
-		"template",
-		"library"
+		"normalization",
+		"transformation"
 	],
 	"author": "",
 	"license": "ISC",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/lib-template.git"
+		"url": "git+https://github.com/Smiduweorc/phasmid.git"
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^21.2.2",
