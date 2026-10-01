@@ -1,6 +1,6 @@
 {
 	"name": "phasmid",
-	"version": "0.0.1",
+	"version": "1.0.0",
 	"description": "TypeScript library for data transformation and normalization.",
 	"type": "module",
 	"main": "dist/index.js",
