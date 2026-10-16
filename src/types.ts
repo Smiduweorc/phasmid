@@ -95,7 +95,10 @@ export interface NormalizeOptions {
  * The structured result of normalizing an address.
  */
 export interface NormalizedEmail {
-	/** The fully normalized address, `${local}@${domain}`. */
+	/**
+	 * The fully normalized address, `${local}@${domain}`. For invalid input,
+	 * the trimmed input with no rule applied.
+	 */
 	normalized: string;
 	/** The normalized local part (before the `@`). */
 	local: string;
@@ -105,6 +108,9 @@ export interface NormalizedEmail {
 	providerId: string | null;
 	/** The sub-address ("tag") that was stripped, or `null` if there was none. */
 	subaddress: string | null;
-	/** Whether the input looks like a syntactically valid address. */
+	/**
+	 * Whether the trimmed input, before any rule ran, looks like a
+	 * syntactically valid address.
+	 */
 	valid: boolean;
 }

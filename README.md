@@ -45,7 +45,7 @@ Every function takes an optional `options` object (see [Configuration](#configur
 
 ### `normalizeEmail(email, options?) => string`
 
-Returns the canonical form of `email`. Throws `TypeError` if `email` is not a string. Malformed input (no `@`, empty local/domain) is returned trimmed and unchanged.
+Returns the canonical form of `email`. Throws `TypeError` if `email` is not a string. Invalid input (see [Edge cases](#edge-cases--guarantees)) is not run through any provider rule: it is returned trimmed and otherwise unchanged.
 
 ```ts
 normalizeEmail("  Foo.Bar+spam@GMAIL.com "); // "foobar@gmail.com"
@@ -63,13 +63,13 @@ normalizeEmailDetailed("John.Doe+promo@gmail.com");
 //   domain: "gmail.com",
 //   providerId: "gmail",   // null for unknown domains
 //   subaddress: "promo",   // the stripped tag, or null
-//   valid: true,           // does it look like a syntactically valid address?
+//   valid: true,           // did the input, as given, look like an address?
 // }
 ```
 
 ### `isSameEmail(a, b, options?) => boolean`
 
-`true` when `a` and `b` normalize to the same canonical address (i.e. deliver to the same mailbox under the configured rules).
+`true` when `a` and `b` are both valid and normalize to the same canonical address (i.e. deliver to the same mailbox under the configured rules). Invalid input never matches anything, including an identical invalid string.
 
 ```ts
 isSameEmail("J.Doe+work@gmail.com", "jdoe@googlemail.com"); // true
@@ -237,7 +237,9 @@ await db.users.insert({ email: input, emailKey: normalized });
 - A separator at index 0 (`+tag@gmail.com`) is **ignored**; stripping it would empty the local part.
 - Only the **first** separator is used as the cut point (`a+b+c` becomes `a`).
 - Domains are lowercased by default; the matched provider's `canonicalDomain` (if any) wins.
-- Non-string input throws `TypeError`. Malformed input is returned unchanged with `valid: false`.
+- Non-string input throws `TypeError`.
+- Validity is decided on the trimmed input **before** any provider rule runs, so a tag cannot smuggle anything past it. Input is invalid when it has no `@`, an empty local part, a domain that is not dot-separated labels of letters, digits and hyphens, or an unquoted local part containing whitespace, a control character, or any of `( ) < > [ ] : ; @ \ , "`. A quoted local part may contain anything except control characters, with `"` and `\` backslash-escaped. A local part that dot removal would empty (`...@gmail.com`) is also invalid.
+- Invalid input comes back with `valid: false`, `normalized` set to the trimmed input with nothing else changed, `providerId` and `subaddress` set to `null`, and `local`/`domain` as split from the input. `getEmailProvider` returns `null` for it and `isSameEmail` returns `false`.
 
 ## Limitations
 
