@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.0] - 2026-10-01
+## [2.0.0] - 2026-10-16
+
+### Bug Fixes
+
+- [**breaking**] Validate raw input before applying provider rules
+
+### Miscellaneous Tasks
+
+- Bump lefthook from 2.2.1 to 2.2.2
+- Bump typescript-eslint from 8.71.1 to 8.71.2
+
+## [1.0.0] - 2026-10-15
 
 ### Bug Fixes
 
@@ -10,6 +21,15 @@ All notable changes to this project will be documented in this file.
 
 ### Miscellaneous Tasks
 
+- Bump @types/node from 26.6.2 to 26.6.3
+- Bump typescript-eslint from 8.70.1 to 8.71.0
+- Bump lefthook from 2.1.14 to 2.1.16
+- Bump @types/node from 26.6.3 to 26.6.4
+- Bump eslint from 10.11.0 to 10.12.0
+- Bump lefthook from 2.1.16 to 2.1.17
+- Bump typescript-eslint from 8.71.0 to 8.71.1
+- Bump lefthook from 2.1.17 to 2.2.1
+- Bump @types/node from 26.6.4 to 26.6.5
 - Bumped version
 
 ### Security
