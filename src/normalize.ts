@@ -72,10 +72,23 @@ function stripSubaddress(
 	return { local: local.slice(0, cut), subaddress: local.slice(cut + cutLen) };
 }
 
+/**
+ * A quoted local part: printable characters, with `"` and `\\` only as
+ * backslash-escaped pairs. Control characters are refused even when escaped,
+ * because a CR or LF that survives here ends up in someone's mail header.
+ */
+const QUOTED_LOCAL_RE = /^"(?:[^"\\\p{Cc}]|\\[^\p{Cc}])*"$/u;
+
+/**
+ * An unquoted local part: no whitespace, no control characters, and none of
+ * the RFC 5322 specials. Non-ASCII is allowed (RFC 6531).
+ */
+const UNQUOTED_LOCAL_RE = /^[^\s\p{Cc}()<>[\]:;@\\,"]+$/u;
+
 function isValidLocal(local: string): boolean {
-	if (local.length === 0) return false;
-	if (isQuoted(local)) return true;
-	return !/[\s@]/.test(local);
+	return isQuoted(local)
+		? QUOTED_LOCAL_RE.test(local)
+		: UNQUOTED_LOCAL_RE.test(local);
 }
 
 /**
@@ -97,16 +110,19 @@ export function normalizeEmailDetailed(
 	const lowercaseDomain = options.lowercaseDomain ?? true;
 	const trimmed = email.trim();
 	const parts = splitEmail(trimmed);
+	const invalid: NormalizedEmail = {
+		normalized: trimmed,
+		local: parts?.local ?? trimmed,
+		domain: parts?.domain ?? "",
+		providerId: null,
+		subaddress: null,
+		valid: false,
+	};
 
-	if (!parts) {
-		return {
-			normalized: trimmed,
-			local: trimmed,
-			domain: "",
-			providerId: null,
-			subaddress: null,
-			valid: false,
-		};
+	// Validate the input as given. Checking after the rules run would let a tag
+	// carry anything (`ab+x\r\nBcc: ...@gmail.com`) and still report valid.
+	if (!parts || !isValidLocal(parts.local) || !DOMAIN_RE.test(parts.domain)) {
+		return invalid;
 	}
 
 	const lookupDomain = parts.domain.toLowerCase();
@@ -131,7 +147,8 @@ export function normalizeEmailDetailed(
 			: provider.canonicalDomain;
 	}
 
-	const valid = isValidLocal(local) && DOMAIN_RE.test(domain);
+	// Dot removal can empty a local part made only of dots (`...@gmail.com`).
+	if (local.length === 0) return invalid;
 
 	return {
 		normalized: `${local}@${domain}`,
@@ -139,7 +156,7 @@ export function normalizeEmailDetailed(
 		domain,
 		providerId: provider?.id ?? null,
 		subaddress,
-		valid,
+		valid: true,
 	};
 }
 
@@ -149,7 +166,8 @@ export function normalizeEmailDetailed(
  * Applies the matching provider's rules (sub-address stripping, dot removal,
  * case-folding, alias-domain collapsing) and returns the canonical string.
  * Unknown domains get a conservative treatment: the domain is lowercased and
- * the local part is left untouched.
+ * the local part is left untouched. Invalid input is not run through any rule
+ * and comes back trimmed and otherwise unchanged.
  *
  * @throws {TypeError} if `email` is not a string.
  */
@@ -166,22 +184,23 @@ export function normalizeEmail(
  */
 export function getEmailProvider(
 	email: string,
-	options: NormalizeOptions = {},
+	options?: NormalizeOptions,
 ): string | null {
 	if (typeof email !== "string") return null;
-	const parts = splitEmail(email.trim());
-	if (!parts) return null;
-	return getRegistry(options).get(parts.domain.toLowerCase())?.id ?? null;
+	return normalizeEmailDetailed(email, options).providerId;
 }
 
 /**
- * Returns `true` if two addresses normalize to the same canonical address,
- * i.e. they deliver to the same mailbox under the configured rules.
+ * Returns `true` if two addresses are both valid and normalize to the same
+ * canonical address, i.e. they deliver to the same mailbox under the
+ * configured rules. Invalid input never matches anything, itself included.
  */
 export function isSameEmail(
 	a: string,
 	b: string,
 	options?: NormalizeOptions,
 ): boolean {
-	return normalizeEmail(a, options) === normalizeEmail(b, options);
+	const left = normalizeEmailDetailed(a, options);
+	const right = normalizeEmailDetailed(b, options);
+	return left.valid && right.valid && left.normalized === right.normalized;
 }
