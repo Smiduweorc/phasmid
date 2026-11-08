@@ -2,7 +2,7 @@
 
 ![Phasmid Logo](https://raw.githubusercontent.com/Smiduweorc/phasmid/refs/heads/master/assets/logo.png)
 
-Phasmid is provider-aware email normalization and canonicalization for the browser and the server. Pure ESM, zero runtime dependencies, fully typed.
+Phasmid normalizes email addresses with each provider's rules (Gmail dots, `+tags`, alias domains), so two addresses for the same mailbox compare equal.
 
 ## Installation
 
@@ -10,7 +10,7 @@ Phasmid is provider-aware email normalization and canonicalization for the brows
 npm install phasmid
 ```
 
-Phasmid ships as ESM (`"type": "module"`). It runs in modern browsers and in Node 18+, and has no runtime dependencies.
+ESM only, no runtime dependencies. Node 22+ (CI runs 22 and 24 on Linux, macOS and Windows). It has no `node:` imports, so it also loads in browsers; CI does not test that.
 
 ## Quick start
 
@@ -32,12 +32,10 @@ Mail providers apply their own rules to decide which mailbox an address reaches:
 
 | Behavior                       | Example                                              | Same mailbox? |
 | ------------------------------ | ---------------------------------------------------- | ------------- |
-| **Plus/sub-address tagging**   | `you+anything@gmail.com` -> `you@gmail.com`          | yes           |
-| **Dot-insensitivity** (Gmail)  | `y.o.u@gmail.com` -> `you@gmail.com`                 | yes           |
-| **Alias domains** (Gmail)      | `you@googlemail.com` -> `you@gmail.com`              | yes           |
-| **Case-insensitivity**         | `You@gmail.com` -> `you@gmail.com`                   | yes           |
-
-Phasmid applies the right rules for each provider and returns one canonical string, so equal mailboxes compare equal.
+| Plus/sub-address tagging       | `you+anything@gmail.com` -> `you@gmail.com`          | yes           |
+| Dot-insensitivity (Gmail)      | `y.o.u@gmail.com` -> `you@gmail.com`                 | yes           |
+| Alias domains (Gmail)          | `you@googlemail.com` -> `you@gmail.com`              | yes           |
+| Case-insensitivity             | `You@gmail.com` -> `you@gmail.com`                   | yes           |
 
 ## API reference
 
@@ -45,7 +43,7 @@ Every function takes an optional `options` object (see [Configuration](#configur
 
 ### `normalizeEmail(email, options?) => string`
 
-Returns the canonical form of `email`. Throws `TypeError` if `email` is not a string. Invalid input (see [Edge cases](#edge-cases--guarantees)) is not run through any provider rule: it is returned trimmed and otherwise unchanged.
+Returns the canonical form of `email`. Throws `TypeError` if `email` is not a string. Invalid input (see [Edge cases](#edge-cases)) is not run through any provider rule: it is returned trimmed and otherwise unchanged.
 
 ```ts
 normalizeEmail("  Foo.Bar+spam@GMAIL.com "); // "foobar@gmail.com"
@@ -116,10 +114,10 @@ DEFAULT_PROVIDERS.flatMap((p) => p.domains); // every recognized domain
 
 All built-in providers lowercase the local part (they are case-insensitive in practice).
 
-> **Unknown domains** get a **conservative** treatment: the domain is lowercased and the
-> local part is left **untouched**. The email spec (RFC 5321) permits case-sensitive local
-> parts, and distinct mailboxes must not be merged by accident. Opt into more aggressive
-> behavior with [`defaultRule`](#a-default-rule-for-every-domain).
+For unknown domains only the domain is lowercased. The local part is left
+alone, because RFC 5321 allows case-sensitive local parts and two real
+mailboxes should not be merged by accident. To change that, set a
+[`defaultRule`](#a-default-rule-for-every-domain).
 
 ## Configuration
 
@@ -204,7 +202,7 @@ interface ProviderRule {
 
 ## Recipes
 
-**Deduplicate a list of addresses**
+Deduplicate a list of addresses:
 
 ```ts
 import { normalizeEmail } from "phasmid";
@@ -214,7 +212,7 @@ const unique = [...new Map(
 ).values()];
 ```
 
-**Block re-registration with an aliased address**
+Block re-registration with an aliased address:
 
 ```ts
 import { isSameEmail } from "phasmid";
@@ -222,43 +220,32 @@ import { isSameEmail } from "phasmid";
 const alreadyUsed = existingUsers.some((u) => isSameEmail(u.email, signup.email));
 ```
 
-**Store a canonical key alongside the original**
+Store a canonical key next to the original:
 
 ```ts
+import { normalizeEmailDetailed } from "phasmid";
+
 const { normalized, valid } = normalizeEmailDetailed(input);
 if (!valid) throw new Error("Invalid email");
 await db.users.insert({ email: input, emailKey: normalized });
 ```
 
-## Edge cases & guarantees
+## Edge cases
 
-- The address is split on the **last** `@`.
-- **Quoted** local parts (`"a..b"@x.com`) are preserved verbatim, with no dot/tag transforms.
-- A separator at index 0 (`+tag@gmail.com`) is **ignored**; stripping it would empty the local part.
-- Only the **first** separator is used as the cut point (`a+b+c` becomes `a`).
+- The address is split on the last `@`.
+- Quoted local parts (`"a..b"@x.com`) are preserved verbatim, with no dot/tag transforms.
+- A separator at index 0 (`+tag@gmail.com`) is ignored, since stripping it would empty the local part.
+- Only the first separator is used as the cut point (`a+b+c` becomes `a`).
 - Domains are lowercased by default; the matched provider's `canonicalDomain` (if any) wins.
 - Non-string input throws `TypeError`.
-- Validity is decided on the trimmed input **before** any provider rule runs, so a tag cannot smuggle anything past it. Input is invalid when it has no `@`, an empty local part, a domain that is not dot-separated labels of letters, digits and hyphens, or an unquoted local part containing whitespace, a control character, or any of `( ) < > [ ] : ; @ \ , "`. A quoted local part may contain anything except control characters, with `"` and `\` backslash-escaped. A local part that dot removal would empty (`...@gmail.com`) is also invalid.
+- Validity is decided on the trimmed input before any provider rule runs, so a tag cannot smuggle anything past it. Input is invalid when it has no `@`, an empty local part, a domain that is not dot-separated labels of letters, digits and hyphens, or an unquoted local part containing whitespace, a control character, or any of `( ) < > [ ] : ; @ \ , "`. A quoted local part may contain anything except control characters, with `"` and `\` backslash-escaped. A local part that dot removal would empty (`...@gmail.com`) is also invalid.
 - Invalid input comes back with `valid: false`, `normalized` set to the trimmed input with nothing else changed, `providerId` and `subaddress` set to `null`, and `local`/`domain` as split from the input. `getEmailProvider` returns `null` for it and `isSameEmail` returns `false`.
 
 ## Limitations
 
-- `valid` is a lightweight syntactic check, **not** full RFC 5322 validation or MX verification.
-- Provider rules reflect widely-documented behavior at the time of writing; providers can change. Everything is overridable via options.
-- Fastmail-style **subdomain addressing** (`tag@user.fastmail.com`) is not resolved, because it depends on the account's domain layout.
-
-## Development
-
-```bash
-npm install        # install dependencies
-npm run build      # compile TypeScript to dist/ (tsc)
-npm run typecheck  # type-check the sources and the tests
-npm run lint       # eslint
-npm test           # run the test suite (node:test via tsx)
-npm run docs       # generate API docs to docs/ (typedoc)
-```
-
-Tests live in `tests/` as `*.test.ts` files. They run directly against the TypeScript sources with `node --import tsx --test`, so no build step is needed to run them. CI (`.github/workflows/ci.yml`) lints, type-checks, tests, and builds on every push and pull request across Linux, macOS, and Windows on Node 22 and 24.
+- `valid` is a syntactic check. It is not full RFC 5322 validation and does no MX lookup.
+- Provider rules match what the providers did when they were written, and providers change. Override any of them with `providers`.
+- Fastmail-style subdomain addressing (`tag@user.fastmail.com`) is not resolved, because it depends on the account's domain layout.
 
 ## License
 
