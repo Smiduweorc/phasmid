@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-11-08
+
+### Documentation
+
+- Revamped docs
+
+### Miscellaneous Tasks
+
+- Bump eslint from 10.12.0 to 10.13.0
+- Bump @commitlint/cli from 21.2.3 to 21.2.4
+- Bump @commitlint/config-conventional
+- Bump typescript-eslint from 8.71.2 to 8.72.0
+- Bump typescript-eslint from 8.72.0 to 8.72.1
+- Bump @types/node from 26.6.5 to 26.6.6
+- Bump eslint from 10.13.0 to 10.14.0
+
 ## [2.0.0] - 2026-10-16
 
 ### Bug Fixes
