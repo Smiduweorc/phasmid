@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.2] - 2026-11-22
+
+### Miscellaneous Tasks
+
+- Bump typescript-eslint from 8.72.1 to 8.72.2
+- Bump eslint from 10.14.0 to 10.15.0
+- Bump typescript-eslint from 8.72.2 to 8.73.0
+- Add manually started staged npm publish workflow
+
 ## [2.0.1] - 2026-11-08
 
 ### Documentation
