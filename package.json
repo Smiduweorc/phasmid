@@ -28,7 +28,11 @@
 		"typescript",
 		"esm",
 		"normalization",
-		"transformation"
+		"transformation",
+		"email-canonicalization",
+		"email",
+		"canonicalization",
+		"smiduweorc"
 	],
 	"author": "",
 	"license": "ISC",
