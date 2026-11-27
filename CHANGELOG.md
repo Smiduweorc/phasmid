@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-11-27
+
+### Features
+
+- [**breaking**] Detect custom-domain providers by MX lookup
+
 ## [2.0.3] - 2026-11-27
 
 ### Miscellaneous Tasks
