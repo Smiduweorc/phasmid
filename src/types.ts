@@ -114,3 +114,86 @@ export interface NormalizedEmail {
 	 */
 	valid: boolean;
 }
+
+/**
+ * A rule that identifies a mail host by a domain's MX records, for custom
+ * domains no {@link ProviderRule} lists (a company domain on Google Workspace
+ * or Microsoft 365, say).
+ *
+ * There is no `canonicalDomain`: a custom domain is its own namespace and is
+ * never rewritten.
+ */
+export interface MxProviderRule extends LocalPartRules {
+	/** Stable identifier reported as `providerId`, e.g. `"google-workspace"`. */
+	id: string;
+
+	/**
+	 * MX hosts that identify this provider. Each entry matches that host and
+	 * every host below it, case-insensitively: `"mail.protection.outlook.com"`
+	 * matches `contoso-com.mail.protection.outlook.com` and not
+	 * `evilmail.protection.outlook.com.example`. A trailing dot is allowed.
+	 */
+	mxHosts: string[];
+}
+
+/** One MX record, the shape `resolveMx` from `node:dns/promises` returns. */
+export interface MxRecord {
+	exchange: string;
+	priority: number;
+}
+
+/** Looks up a domain's MX records. A domain without any resolves to `[]`. */
+export type MxResolver = (domain: string) => Promise<MxRecord[]>;
+
+/**
+ * A store for MX lookups that you own: a `Map`, Redis, a database table.
+ * Phasmid calls `get` before resolving and `set` after a successful lookup,
+ * and nothing else; expiry, refresh and eviction are the store's.
+ *
+ * Values are the raw records, so a change to the MX rules applies to cached
+ * domains too. Errors the store throws are rethrown unchanged.
+ */
+export interface MxCache {
+	/** The cached records for `domain`, or `undefined` on a miss. */
+	get(
+		domain: string,
+	): MxRecord[] | undefined | Promise<MxRecord[] | undefined>;
+	/** Store the records for `domain`. The return value is ignored. */
+	set(domain: string, records: MxRecord[]): unknown;
+}
+
+/**
+ * Options for the async functions (`normalizeEmailAsync` and the rest). All of
+ * {@link NormalizeOptions} applies, and a domain a provider lists is never
+ * looked up.
+ */
+export interface MxNormalizeOptions extends NormalizeOptions {
+	/**
+	 * How to look up MX records. Required, because phasmid has no `node:`
+	 * imports: pass `resolveMx` from `node:dns/promises`, or a resolver that
+	 * adds a timeout or uses DNS over HTTPS. Its errors are rethrown unchanged.
+	 */
+	resolveMx: MxResolver;
+
+	/**
+	 * Extra MX rules, checked before the built-ins. A rule whose `id` matches a
+	 * built-in replaces it. Ids must be unique.
+	 */
+	mxProviders?: MxProviderRule[];
+
+	/**
+	 * Use only {@link mxProviders} and ignore {@link DEFAULT_MX_PROVIDERS}.
+	 * Defaults to `false`.
+	 */
+	replaceDefaultMxProviders?: boolean;
+
+	/**
+	 * Answers that skip the lookup: a domain mapped to an MX rule id gets that
+	 * rule, a domain mapped to `null` gets none. Domains are matched
+	 * case-insensitively. An unknown id throws.
+	 */
+	mxOverrides?: Record<string, string | null>;
+
+	/** Where to remember lookups. Without it, every call resolves. */
+	mxCache?: MxCache;
+}

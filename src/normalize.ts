@@ -1,6 +1,8 @@
+import { PhasmidError } from "./errors.js";
 import { DEFAULT_PROVIDERS } from "./providers.js";
 import type {
 	DefaultRule,
+	MxProviderRule,
 	NormalizeOptions,
 	NormalizedEmail,
 	ProviderRule,
@@ -14,7 +16,7 @@ const CONSERVATIVE_DEFAULT: Required<DefaultRule> = {
 };
 
 /** A basic domain shape: labels separated by dots, with a final TLD label. */
-const DOMAIN_RE =
+export const DOMAIN_RE =
 	/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
 
 /** Lazily-built registry for the default-only case (the common path). */
@@ -95,15 +97,29 @@ function isValidLocal(local: string): boolean {
  * Normalize an email address and return the full structured result, including
  * the matched provider, the stripped sub-address, and a validity flag.
  *
- * @throws {TypeError} if `email` is not a string.
+ * @throws {PhasmidError} `email-not-string` if `email` is not a string.
  */
 export function normalizeEmailDetailed(
 	email: string,
 	options: NormalizeOptions = {},
 ): NormalizedEmail {
+	return normalizeCore(email, options, null);
+}
+
+/**
+ * The shared engine. `detected` is an MX-detected rule, applied only when no
+ * provider lists the domain.
+ */
+export function normalizeCore(
+	email: string,
+	options: NormalizeOptions,
+	detected: MxProviderRule | null,
+): NormalizedEmail {
 	if (typeof email !== "string") {
-		throw new TypeError(
+		throw new PhasmidError(
+			"email-not-string",
 			`Expected email to be a string, received ${typeof email}`,
+			typeof email,
 		);
 	}
 
@@ -127,7 +143,8 @@ export function normalizeEmailDetailed(
 
 	const lookupDomain = parts.domain.toLowerCase();
 	const provider = getRegistry(options).get(lookupDomain) ?? null;
-	const rule = provider ?? options.defaultRule ?? CONSERVATIVE_DEFAULT;
+	const rule =
+		provider ?? detected ?? options.defaultRule ?? CONSERVATIVE_DEFAULT;
 
 	let local = parts.local;
 	let subaddress: string | null = null;
@@ -154,7 +171,7 @@ export function normalizeEmailDetailed(
 		normalized: `${local}@${domain}`,
 		local,
 		domain,
-		providerId: provider?.id ?? null,
+		providerId: provider?.id ?? detected?.id ?? null,
 		subaddress,
 		valid: true,
 	};
@@ -169,7 +186,7 @@ export function normalizeEmailDetailed(
  * the local part is left untouched. Invalid input is not run through any rule
  * and comes back trimmed and otherwise unchanged.
  *
- * @throws {TypeError} if `email` is not a string.
+ * @throws {PhasmidError} `email-not-string` if `email` is not a string.
  */
 export function normalizeEmail(
 	email: string,

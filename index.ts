@@ -17,7 +17,16 @@ export {
 	isSameEmail,
 } from "./src/normalize.js";
 
-export { DEFAULT_PROVIDERS } from "./src/providers.js";
+export {
+	normalizeEmailAsync,
+	normalizeEmailDetailedAsync,
+	getEmailProviderAsync,
+	isSameEmailAsync,
+} from "./src/mx.js";
+
+export { PhasmidError, type PhasmidErrorCode } from "./src/errors.js";
+
+export { DEFAULT_PROVIDERS, DEFAULT_MX_PROVIDERS } from "./src/providers.js";
 
 export type {
 	ProviderRule,
@@ -25,4 +34,9 @@ export type {
 	LocalPartRules,
 	NormalizeOptions,
 	NormalizedEmail,
+	MxProviderRule,
+	MxRecord,
+	MxResolver,
+	MxCache,
+	MxNormalizeOptions,
 } from "./src/types.js";
