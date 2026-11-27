@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.3] - 2026-11-27
+
+### Miscellaneous Tasks
+
+- Bump fast-check from 4.10.2 to 4.10.3
+- Bump fast-check from 4.10.3 to 4.11.0
+- Bump typescript-eslint from 8.73.0 to 8.74.0
+- Updated package.json
+
 ## [2.0.2] - 2026-11-22
 
 ### Miscellaneous Tasks
