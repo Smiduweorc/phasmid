@@ -10,7 +10,7 @@ Phasmid normalizes email addresses with each provider's rules (Gmail dots, `+tag
 npm install phasmid
 ```
 
-ESM only, no runtime dependencies. Node 22+ (CI runs 22 and 24 on Linux, macOS and Windows). It has no `node:` imports, so it also loads in browsers; CI does not test that.
+ESM only, no runtime dependencies, no `node:` imports. Node 22+ (CI runs 22 and 24 on Linux, macOS and Windows), Bun and Deno (CI runs the built package on both), and browsers (checked by hand in Chromium, not in CI).
 
 ## Quick start
 
@@ -43,7 +43,7 @@ Every function takes an optional `options` object (see [Configuration](#configur
 
 ### `normalizeEmail(email, options?) => string`
 
-Returns the canonical form of `email`. Throws `TypeError` if `email` is not a string. Invalid input (see [Edge cases](#edge-cases)) is not run through any provider rule: it is returned trimmed and otherwise unchanged.
+Returns the canonical form of `email`. Throws [`PhasmidError`](#phasmiderror) if `email` is not a string. Invalid input (see [Edge cases](#edge-cases)) is not run through any provider rule: it is returned trimmed and otherwise unchanged.
 
 ```ts
 normalizeEmail("  Foo.Bar+spam@GMAIL.com "); // "foobar@gmail.com"
@@ -82,6 +82,32 @@ Returns the id of the provider that owns the address's domain, or `null` if no p
 getEmailProvider("a@proton.me");   // "proton"
 getEmailProvider("a@example.com"); // null
 ```
+
+### `PhasmidError`
+
+The one error phasmid throws for its own refusals. It extends `TypeError`, its message starts with `phasmid: `, and it carries a `code` and a `subject` (the value the refusal is about, or `undefined`):
+
+| `code`                 | Thrown when                                                    | `subject`                    |
+| ---------------------- | -------------------------------------------------------------- | ---------------------------- |
+| `email-not-string`     | the email is not a string                                      | its `typeof`                 |
+| `resolver-missing`     | an async call has no `resolveMx` function                      | `undefined`                  |
+| `invalid-mx-providers` | `mxProviders` is not an array                                  | `undefined`                  |
+| `invalid-mx-rule`      | an MX rule has no id, a duplicate id, or bad `mxHosts`         | the rule id, if it has one   |
+| `invalid-mx-override`  | an override names an unknown rule, or a domain maps two ways   | the domain                   |
+| `invalid-mx-records`   | `resolveMx` or `mxCache.get` returned something not MX records | `resolveMx` or `mxCache.get` |
+
+```ts
+import { PhasmidError } from "phasmid";
+
+try {
+  await normalizeEmailAsync(email, options);
+} catch (e) {
+  if (e instanceof PhasmidError && e.code === "invalid-mx-records") { /* fix the resolver */ }
+  throw e;
+}
+```
+
+Errors from your `resolveMx` or `mxCache` are rethrown as they are and are never a `PhasmidError`.
 
 ### `DEFAULT_PROVIDERS`
 
@@ -178,6 +204,88 @@ normalizeEmail("john+tag@example.com", {
 
 A `defaultRule` never overrides a matched provider (Yahoo still uses `-`, etc.).
 
+### Custom domains by MX lookup
+
+A company domain on Google Workspace or Microsoft 365 is on no provider list. The async functions (`normalizeEmailAsync`, `normalizeEmailDetailedAsync`, `getEmailProviderAsync`, `isSameEmailAsync`) look up the MX records of a valid address whose domain no provider lists, and apply the rule of the host they point at. They take the same options as the sync functions, plus a required `resolveMx`.
+
+```ts
+import { resolveMx as lookup } from "node:dns/promises";
+import { normalizeEmailAsync, type MxResolver } from "phasmid";
+
+// node:dns rejects for a domain with no MX records; here that means "none".
+const resolveMx: MxResolver = (domain) =>
+  lookup(domain).catch((e) => {
+    if (e.code === "ENODATA" || e.code === "ENOTFOUND") return [];
+    throw e;
+  });
+
+await normalizeEmailAsync("Jane.Doe+news@anthropic.com", { resolveMx });
+// "jane.doe@anthropic.com" (Workspace: tag stripped, dots and domain kept)
+```
+
+That resolver runs on Node, Bun and Deno. In a browser, use DNS over HTTPS:
+
+```ts
+const resolveMx: MxResolver = async (domain) => {
+  const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`;
+  const response = await fetch(url, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`DoH lookup for ${domain} failed: HTTP ${response.status}`);
+  const { Status, Answer = [] } = await response.json();
+  if (Status === 3) return []; // NXDOMAIN
+  if (Status !== 0) throw new Error(`DoH lookup for ${domain} failed: DNS status ${Status}`);
+  return Answer.filter((a) => a.type === 15).map((a) => {
+    const [priority, exchange] = a.data.split(" ");
+    return { priority: Number(priority), exchange };
+  });
+};
+```
+
+Built-in MX rules (`DEFAULT_MX_PROVIDERS`). Each MX host matches itself and every host below it:
+
+| id                 | MX hosts                                                           |
+| ------------------ | ------------------------------------------------------------------ |
+| `google-workspace` | `google.com`, `googlemail.com`                                     |
+| `microsoft-365`    | `mail.protection.outlook.com`, `mx.microsoft`                      |
+| `zoho-custom`      | `zoho.com`, `zoho.eu`, `zoho.in`, `zoho.com.au`, `zohomail.com`    |
+| `fastmail-custom`  | `messagingengine.com`                                              |
+| `proton-custom`    | `protonmail.ch`                                                    |
+
+All five lowercase the local part and strip `+` tags. None remove dots (only gmail.com ignores them) and none rewrite the domain. Records are tried lowest `priority` first, and the first host a rule matches decides.
+
+| Option                      | Type                           | Default | Effect                                                              |
+| --------------------------- | ------------------------------ | ------- | ------------------------------------------------------------------- |
+| `resolveMx`                 | `(domain) => Promise<MxRecord[]>` | none, required | Looks up MX records. Its errors are rethrown unchanged.   |
+| `mxProviders`               | `MxProviderRule[]`             | `[]`    | Checked before the built-ins. Reusing a built-in id replaces it.    |
+| `replaceDefaultMxProviders` | `boolean`                      | `false` | Use only `mxProviders`.                                             |
+| `mxOverrides`               | `Record<string, string \| null>` | `{}` | Domain to rule id, or `null` for no rule. Skips the lookup.         |
+| `mxCache`                   | `MxCache`                      | none    | Your store for lookups. Without it, every call resolves.            |
+
+```ts
+await normalizeEmailAsync(email, {
+  resolveMx,
+  mxProviders: [{ id: "corp", mxHosts: ["mx.corp.example"], lowercaseLocal: true, subaddressSeparators: ["+"] }],
+  mxOverrides: { "legacy.example": null, "acme.example": "microsoft-365" },
+});
+```
+
+A malformed option (a missing `resolveMx`, a duplicate rule id, an `mxHosts` entry that is not a host name, an override naming an unknown id) rejects with a [`PhasmidError`](#phasmiderror), as does a resolver or store returning something other than an array of `{ exchange, priority }` records.
+
+#### Caching lookups
+
+`mxCache` takes any object with `get(domain)` and `set(domain, records)`, sync or async; a `Map` works as is. Phasmid calls `get` before resolving and `set` after a successful lookup. Expiry and refresh are up to your store:
+
+```ts
+const mxCache: MxCache = {
+  get: async (domain) => {
+    const value = await redis.get(`mx:${domain}`);
+    return value === null ? undefined : JSON.parse(value);
+  },
+  set: (domain, records) => redis.set(`mx:${domain}`, JSON.stringify(records), "EX", 86400),
+};
+```
+
+Keys are lowercased domains, values are the raw records, so a rule change applies to cached domains too. A domain with no MX records is stored as `[]`, and `[]` is a hit. A lookup that fails is not stored. Errors the store throws are rethrown unchanged.
+
 ### Options reference
 
 ```ts
@@ -237,15 +345,18 @@ await db.users.insert({ email: input, emailKey: normalized });
 - A separator at index 0 (`+tag@gmail.com`) is ignored, since stripping it would empty the local part.
 - Only the first separator is used as the cut point (`a+b+c` becomes `a`).
 - Domains are lowercased by default; the matched provider's `canonicalDomain` (if any) wins.
-- Non-string input throws `TypeError`.
+- Non-string input throws `PhasmidError` with code `email-not-string`.
 - Validity is decided on the trimmed input before any provider rule runs, so a tag cannot smuggle anything past it. Input is invalid when it has no `@`, an empty local part, a domain that is not dot-separated labels of letters, digits and hyphens, or an unquoted local part containing whitespace, a control character, or any of `( ) < > [ ] : ; @ \ , "`. A quoted local part may contain anything except control characters, with `"` and `\` backslash-escaped. A local part that dot removal would empty (`...@gmail.com`) is also invalid.
 - Invalid input comes back with `valid: false`, `normalized` set to the trimmed input with nothing else changed, `providerId` and `subaddress` set to `null`, and `local`/`domain` as split from the input. `getEmailProvider` returns `null` for it and `isSameEmail` returns `false`.
 
 ## Limitations
 
-- `valid` is a syntactic check. It is not full RFC 5322 validation and does no MX lookup.
+- `valid` is a syntactic check. It is not full RFC 5322 validation and does not check that the mailbox exists. The async functions look up MX only to pick a rule.
 - Provider rules match what the providers did when they were written, and providers change. Override any of them with `providers`.
 - Fastmail-style subdomain addressing (`tag@user.fastmail.com`) is not resolved, because it depends on the account's domain layout.
+- MX names the server that receives the mail. A Workspace or Microsoft 365 domain behind a filtering gateway (Proofpoint, Mimecast) has the gateway's MX hosts and gets no rule. Add an `mxOverrides` entry for it.
+- A Microsoft 365 tenant admin can turn plus-addressing off, after which `a+b@` and `a@` are different mailboxes. For such a tenant, override `microsoft-365` without `subaddressSeparators`.
+- Timeouts, retries and coalescing of concurrent lookups for one domain are not included: put them in your `resolveMx` (Firefly does all three). How long a cached lookup stays fresh is your store's call (Repletes handles refresh policy).
 
 ## License
 

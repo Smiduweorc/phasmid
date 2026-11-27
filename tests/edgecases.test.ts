@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeEmail, normalizeEmailDetailed } from "../index.js";
+import { PhasmidError, normalizeEmail, normalizeEmailDetailed } from "../index.js";
 
 test("unknown domains (conservative default)", async (t) => {
 	await t.test("domain is lowercased but local-part case is preserved", () => {
@@ -54,6 +54,22 @@ test("input handling", async (t) => {
 			},
 			TypeError,
 		);
+	});
+
+	await t.test("non-string input is refused with email-not-string and its type", () => {
+		for (const [input, type] of [[undefined, "undefined"], [null, "object"], [5, "number"], [{}, "object"]] as const) {
+			assert.throws(
+				// @ts-expect-error testing the runtime guard
+				() => normalizeEmailDetailed(input),
+				(e: unknown) => {
+					assert.ok(e instanceof PhasmidError);
+					assert.equal(e.code, "email-not-string");
+					assert.equal(e.subject, type);
+					assert.equal(e.message, `phasmid: Expected email to be a string, received ${type}`);
+					return true;
+				},
+			);
+		}
 	});
 });
 

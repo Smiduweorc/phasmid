@@ -1,4 +1,4 @@
-import type { ProviderRule } from "./types.js";
+import type { MxProviderRule, ProviderRule } from "./types.js";
 
 /**
  * Built-in provider rules.
@@ -179,5 +179,52 @@ export const DEFAULT_PROVIDERS: readonly ProviderRule[] = Object.freeze([
 		id: "aol",
 		domains: ["aol.com", "aim.com"],
 		lowercaseLocal: true,
+	},
+]);
+/**
+ * Built-in MX rules, used by the async functions to recognize custom domains
+ * on a major host.
+ *
+ * They do not copy the consumer rules: dots are significant on Google
+ * Workspace (only gmail.com ignores them), and no domain is collapsed.
+ * Plus-addressing is on by default on all five; a Microsoft 365 tenant admin
+ * can turn it off.
+ *
+ * `mx.microsoft` is the DNSSEC-signed MX Microsoft started issuing in 2024
+ * alongside `mail.protection.outlook.com`. Workspace's MX is `smtp.google.com`
+ * for new domains and `aspmx.l.google.com` and its `alt*` hosts for older ones.
+ *
+ * Override or extend via {@link MxNormalizeOptions.mxProviders}.
+ */
+export const DEFAULT_MX_PROVIDERS: readonly MxProviderRule[] = Object.freeze([
+	{
+		id: "google-workspace",
+		mxHosts: ["google.com", "googlemail.com"],
+		lowercaseLocal: true,
+		subaddressSeparators: ["+"],
+	},
+	{
+		id: "microsoft-365",
+		mxHosts: ["mail.protection.outlook.com", "mx.microsoft"],
+		lowercaseLocal: true,
+		subaddressSeparators: ["+"],
+	},
+	{
+		id: "zoho-custom",
+		mxHosts: ["zoho.com", "zoho.eu", "zoho.in", "zoho.com.au", "zohomail.com"],
+		lowercaseLocal: true,
+		subaddressSeparators: ["+"],
+	},
+	{
+		id: "fastmail-custom",
+		mxHosts: ["messagingengine.com"],
+		lowercaseLocal: true,
+		subaddressSeparators: ["+"],
+	},
+	{
+		id: "proton-custom",
+		mxHosts: ["protonmail.ch"],
+		lowercaseLocal: true,
+		subaddressSeparators: ["+"],
 	},
 ]);
